@@ -1,0 +1,196 @@
+from flask import Flask, request
+import requests
+from datetime import datetime
+
+app = Flask(__name__)
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+
+    result = ""
+
+    if request.method == "POST":
+
+        rate = float(request.form["rate"])
+
+        shift_start = datetime.fromisoformat(request.form["start"])
+        shift_end = datetime.fromisoformat(request.form["end"])
+
+        url = "https://www.hebcal.com/shabbat"
+
+        params = {
+            "cfg": "json",
+            "city": "IL-Haifa",
+            "M": "on"
+        }
+
+        data = requests.get(url, params=params).json()
+
+        shabbat_start = None
+        shabbat_end = None
+
+        for item in data["items"]:
+
+            if item["category"] == "candles":
+                shabbat_start = datetime.fromisoformat(item["date"]).replace(tzinfo=None)
+
+            if item["category"] == "havdalah":
+                shabbat_end = datetime.fromisoformat(item["date"]).replace(tzinfo=None)
+
+        total_hours = (shift_end - shift_start).total_seconds() / 3600
+
+        overlap_start = max(shift_start, shabbat_start)
+        overlap_end = min(shift_end, shabbat_end)
+
+        if overlap_start < overlap_end:
+            shabbat_hours = (overlap_end - overlap_start).total_seconds() / 3600
+        else:
+            shabbat_hours = 0
+
+        regular_hours = total_hours - shabbat_hours
+
+        salary = regular_hours * rate + shabbat_hours * rate * 1.5
+
+        result = f"""
+        <div class="result">
+            <h2>Результат:</h2>
+
+            <p><b>Ставка:</b> {rate:.2f} ₪</p>
+
+            <p><b>Всего часов:</b> {total_hours:.2f}</p>
+
+            <p><b>Обычные часы:</b> {regular_hours:.2f}</p>
+
+            <p><b>Шаббатние часы:</b> {shabbat_hours:.2f}</p>
+
+            <h2>Зарплата: {salary:.2f} ₪</h2>
+        </div>
+        """
+
+    return f"""
+    <html>
+
+    <head>
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <style>
+
+            body {{
+                font-family: Arial, sans-serif;
+                background: #f4f4f4;
+                padding: 20px;
+                margin: 0;
+            }}
+
+            .container {{
+                max-width: 500px;
+                margin: auto;
+                background: white;
+                padding: 25px;
+                border-radius: 20px;
+                box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            }}
+
+            h1 {{
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+
+            p {{
+                margin-bottom: 8px;
+                font-size: 18px;
+            }}
+
+            input {{
+                width: 100%;
+                padding: 12px;
+                font-size: 16px;
+                margin-bottom: 20px;
+                border-radius: 10px;
+                border: 1px solid #ccc;
+                box-sizing: border-box;
+            }}
+
+            button {{
+                width: 100%;
+                padding: 14px;
+                font-size: 18px;
+                border: none;
+                border-radius: 12px;
+                background: black;
+                color: white;
+                cursor: pointer;
+            }}
+
+            button:hover {{
+                background: #333;
+            }}
+
+            .result {{
+                margin-top: 30px;
+                background: #f9f9f9;
+                padding: 20px;
+                border-radius: 15px;
+            }}
+
+            @media (max-width: 600px) {{
+
+                body {{
+                    padding: 10px;
+                }}
+
+                .container {{
+                    padding: 20px;
+                }}
+
+                h1 {{
+                    font-size: 30px;
+                }}
+
+                p {{
+                    font-size: 16px;
+                }}
+
+                button {{
+                    font-size: 16px;
+                }}
+            }}
+
+        </style>
+
+    </head>
+
+    <body>
+
+        <div class="container">
+
+            <h1>Счетчик зарплаты</h1>
+
+            <form method="post">
+
+                <p>Почасовая ставка:</p>
+                <input type="number" step="0.01" name="rate" required>
+
+                <p>Начало смены:</p>
+                <input type="datetime-local" name="start" required>
+
+                <p>Конец смены:</p>
+                <input type="datetime-local" name="end" required>
+
+                <button type="submit">
+                    Посчитать зарплату
+                </button>
+
+            </form>
+
+            {result}
+
+        </div>
+
+    </body>
+
+    </html>
+    """
+
+app.run()
